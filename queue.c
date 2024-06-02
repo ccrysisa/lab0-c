@@ -137,6 +137,7 @@ bool q_delete_dup(struct list_head *head)
         return false;
     struct list_head *node, *safe;
     list_for_each_safe (node, safe, head) {
+        struct list_head *temp = safe;
         element_t *e_node = list_entry(node, element_t, list);
         while (!(safe == head)) {
             element_t *e_safe = list_entry(safe, element_t, list);
@@ -145,6 +146,10 @@ bool q_delete_dup(struct list_head *head)
             safe = safe->next;
             list_del(&e_safe->list);
             q_release_element(e_safe);
+        }
+        if (temp != safe) {
+            list_del(node);
+            q_release_element(e_node);
         }
     }
     return true;
@@ -405,6 +410,8 @@ void q_sort(struct list_head *head, bool descend)
     // q_insertion_sort(head, descend);
     // q_selection_sort(head, descend);
 
+    if (!head)
+        return;
     head->prev->next = NULL;
     q_merge_sort(&head->next, descend);
     struct list_head *node, *prev = head;
@@ -421,7 +428,26 @@ void q_sort(struct list_head *head, bool descend)
 int q_ascend(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-nodes-from-linked-list/
-    return 0;
+    if (!head)
+        return 0;
+    q_reverse(head);
+    struct list_head *node, *safe;
+    list_for_each_safe (node, safe, head) {
+        if (safe == head)
+            break;
+        element_t *e_node = list_entry(node, element_t, list);
+        element_t *e_safe = list_entry(safe, element_t, list);
+        while (strcmp(e_node->value, e_safe->value) < 0) {
+            safe = safe->next;
+            list_del(safe->prev);
+            q_release_element(e_safe);
+            if (safe == head)
+                break;
+            e_safe = list_entry(safe, element_t, list);
+        }
+    }
+    q_reverse(head);
+    return q_size(head);
 }
 
 /* Remove every node which has a node with a strictly greater value anywhere
@@ -429,7 +455,85 @@ int q_ascend(struct list_head *head)
 int q_descend(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-nodes-from-linked-list/
-    return 0;
+    if (!head)
+        return 0;
+    q_reverse(head);
+    struct list_head *node, *safe;
+    list_for_each_safe (node, safe, head) {
+        if (safe == head)
+            break;
+        element_t *e_node = list_entry(node, element_t, list);
+        element_t *e_safe = list_entry(safe, element_t, list);
+        while (strcmp(e_node->value, e_safe->value) > 0) {
+            safe = safe->next;
+            list_del(safe->prev);
+            q_release_element(e_safe);
+            if (safe == head)
+                break;
+            e_safe = list_entry(safe, element_t, list);
+        }
+    }
+    q_reverse(head);
+    return q_size(head);
+}
+
+/* Merge two lists */
+static void q_merge2(struct list_head *l1, struct list_head *l2, bool descend)
+{
+    queue_contex_t *q1 = list_entry(l1, queue_contex_t, chain);
+    queue_contex_t *q2 = list_entry(l2, queue_contex_t, chain);
+    struct list_head *h1 = q1->q->next;
+    struct list_head *h2 = q2->q->next;
+    struct list_head **head = &q1->q;
+
+    while (h1 != q1->q && h2 != q2->q) {
+        element_t *e1 = list_entry(h1, element_t, list);
+        element_t *e2 = list_entry(h2, element_t, list);
+
+        int cmp = strcmp(e1->value, e2->value);
+        if ((descend && cmp < 0) || (!descend && cmp > 0)) {
+            (*head)->next = h2;
+            h2->prev = (*head);
+            h2 = h2->next;
+        } else {
+            (*head)->next = h1;
+            h1->prev = (*head);
+            h1 = h1->next;
+        }
+        head = &(*head)->next;
+    }
+
+    if (h1 != q1->q) {
+        (*head)->next = h1;
+        h1->prev = (*head);
+        head = &q1->q->prev;
+    }
+    if (h2 != q2->q) {
+        (*head)->next = h2;
+        h2->prev = (*head);
+        head = &q2->q->prev;
+    }
+
+    (*head)->next = q1->q;
+    q1->q->prev = (*head);
+    INIT_LIST_HEAD(q2->q);
+    q1->size += q2->size;
+}
+
+/* Merge lists in region [lh, rh) */
+static void q_mergeK(struct list_head *lh, struct list_head *rh, bool descend)
+{
+    if (lh == rh || lh->next == rh)
+        return;
+    struct list_head *p = lh;
+    struct list_head *q = rh->prev;
+    while (!(p == q || p->next == q)) {
+        p = p->next;
+        q = q->prev;
+    }
+    q_mergeK(lh, q, descend);
+    q_mergeK(q, rh, descend);
+    q_merge2(lh, q, descend);
 }
 
 /* Merge all the queues into one sorted queue, which is in
@@ -437,5 +541,8 @@ int q_descend(struct list_head *head)
 int q_merge(struct list_head *head, bool descend)
 {
     // https://leetcode.com/problems/merge-k-sorted-lists/
-    return 0;
+    if (!head || list_empty(head))
+        return 0;
+    q_mergeK(head->next, head, descend);
+    return list_entry(head->next, queue_contex_t, chain)->size;
 }
